@@ -24,9 +24,12 @@ junk. You end up with either **no memory or no room to think**.
 
 `mcp-compact` is the opposite. It treats the session file as a patient, not a
 log pile: first a read-only report that weighs every event in bytes and tokens
-so you can *choose* what goes, then a trimmer that removes exactly what you
-named — or, when you don't want to choose, a blanket pass that takes only the
-provably dead weight. Telemetry, system prompts, and tool catalogs are immortal
+so you and your agent can *choose together* what goes, then a trimmer that
+removes exactly what you named — or, when you don't want to choose, a blanket
+pass that takes only the provably dead weight. The key result: the agent is
+extremely intelligent and strategic about what it removes. It successfully
+performs surgery on its own memory — as trivial as deciding what files to
+delete from disk when space runs low. Telemetry, system prompts, and tool catalogs are immortal
 and never listed or touched. Everything else keeps working: Ada notices a real
 run and reloads the trimmed history into memory at the next turn boundary, no
 restart dance.
