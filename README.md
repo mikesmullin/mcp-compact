@@ -44,6 +44,9 @@ restart dance.
   `tool_call`/`tool_result` pairs. Nothing in between.
 - **Pairs never split.** Naming a call takes its result; naming a result takes
   its call. The transcript stays coherent.
+- **No phantom limbs.** The surgery happens in-session, by the same agent
+  that keeps talking — so it *knows* what was removed and works around the
+gaps instead of hallucinating or tripping over dangling references.
 - **The denominator is honest.** The budget is `min(AGL per-model table, server
   floor)`, so the `% full` number matches the pie ring Ada shows, not a guess.
 - **Safe by construction.** `dryRun` defaults true, real runs back up the file
