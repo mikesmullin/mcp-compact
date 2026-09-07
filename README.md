@@ -14,7 +14,7 @@
 
 **Surgery for an immortal agent session — look at what's eating context, then cut exactly that.**
 
-Ada never restarts. Her Angela session (`*.jsonl`, one event per line) accretes
+[Ada](https://github.com/mikesmullin/ada) never restarts. Her [Angela](https://github.com/mikesmullin/angela) session (`*.jsonl`, one event per line) accretes
 forever: every user prompt, every reasoning trace, every tool call and result —
 plus screenshots and image payloads that each weigh as much as a novella. The
 usual options all disappoint: restart the session and she forgets who you are;
@@ -30,7 +30,7 @@ pass that takes only the provably dead weight. The key result: the agent is
 extremely intelligent and strategic about what it removes. It successfully
 performs surgery on its own memory — as trivial as deciding what files to
 delete from disk when space runs low. Telemetry, system prompts, and tool catalogs are immortal
-and never listed or touched. Everything else keeps working: Ada notices a real
+and never listed or touched. Everything else keeps working: [Ada](https://github.com/mikesmullin/ada) notices a real
 run and reloads the trimmed history into memory at the next turn boundary, no
 restart dance.
 
@@ -47,8 +47,8 @@ restart dance.
 - **No phantom limbs.** The surgery happens in-session, by the same agent
   that keeps talking — so it *knows* what was removed and works around the
 gaps instead of hallucinating or tripping over dangling references.
-- **The denominator is honest.** The budget is `min(AGL per-model table, server
-  floor)`, so the `% full` number matches the pie ring Ada shows, not a guess.
+- **The denominator is honest.** The budget is `min([AGL](https://github.com/mikesmullin/agl) per-model table, server
+  floor)`, so the `% full` number matches the pie ring [Ada](https://github.com/mikesmullin/ada) shows, not a guess.
 - **Safe by construction.** `dryRun` defaults true, real runs back up the file
   (`*.pre-compact-<stamp>`), refresh the sidecar counts, keep corrupt lines
   rather than destroy them, and refuse anything outside the five kinds.
@@ -66,7 +66,7 @@ bun install
 bun ./server.coffee            # stdio MCP; see Configuration below
 ```
 
-Wired into Ada as the `compact` MCP (`prefix: false`), so the model sees
+Wired into [Ada](https://github.com/mikesmullin/ada) as the `compact` MCP (`prefix: false`), so the model sees
 `context_analysis` and `compact_session_history` directly. `compact_session_history`
 stays Tom-gated; `context_analysis` runs free.
 
@@ -131,7 +131,7 @@ only immortal events is refused per sha, and pair-mates ride along automatically
 
 **3. Make the cut and keep talking.** Drop `dryRun` (or set it false). The
 server backs up the jsonl, rewrites it, refreshes the sidecar `.json`
-(`eventCount`, `updatedAt`) — and Ada-back notices the real run and reloads the
+(`eventCount`, `updatedAt`) — and [Ada-back](https://github.com/mikesmullin/ada) notices the real run and reloads the
 trimmed history into memory at the next turn boundary. Manual runs while the
 back is stopped still apply on next startup. No restart needed either way.
 
@@ -189,4 +189,4 @@ summarization / semantic merging on top of the sha-targeted machinery — the
 report already speaks the vocabulary (`removeShas`) the summarizer will need.
 Until then: no new eligible kinds without updating `displayType`,
 `compactLines`, and the pair-expansion together, and keep the report's one-line
-gist (`sha6 kind NNNtok: …`) parseable — Ada reads it, not just humans.
+gist (`sha6 kind NNNtok: …`) parseable — [Ada](https://github.com/mikesmullin/ada) reads it, not just humans.
