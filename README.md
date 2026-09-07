@@ -10,9 +10,9 @@ the sidecar `.json` counts. No summarization (yet).
 
 `dryRun` defaults true: reports counts without writing.
 
-**Ordering matters:** stop `ada-back` before a real run, restart after.
-Otherwise appended events can race the rewrite and the in-memory history
-never shrinks.
+No restart dance: ada-back watches for real (non-dry) runs of this tool
+and reloads the trimmed history into memory at the next turn boundary.
+(Manual runs while the back is stopped still apply on next startup.)
 
 ## Run
 
