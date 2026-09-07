@@ -1,0 +1,13 @@
+{
+  "name": "@mikesmullin/mcp-compact",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Naive session-history compaction for Ada: drop image payloads and tool call/result pairs",
+  "bin": {
+    "mcp-compact": "./server.coffee"
+  },
+  "dependencies": {
+    "bun-coffeescript": "^1.0.3"
+  }
+}

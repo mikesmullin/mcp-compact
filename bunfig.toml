@@ -1,0 +1,2 @@
+# Lets Bun run .coffee files natively (bun server.coffee).
+preload = ["bun-coffeescript/register"]
