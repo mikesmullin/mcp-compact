@@ -193,6 +193,57 @@ analyzeLines = (lines) ->
   total = rows.reduce ((s, r) -> s + r.bytes), 0
   { rows, total, excluded }
 
+estTok = (b) -> Math.ceil b / 4
+
+readLastPromptTokens = (id) ->
+  try
+    meta = JSON.parse readFileSync (join SESSION_DIR, "#{id}.json"), 'utf8'
+    n = Number meta?.lastPromptTokens
+    return n if Number.isFinite(n) and n > 0
+  catch e then null
+  null
+
+# Eligible-window size (the five kinds), same estimator as context_analysis.
+# `measured` is lastPromptTokens when known (before only).
+windowStats = (lineList, measured = null) ->
+  { rows, total } = analyzeLines lineList
+  { budget } = ctxBudget()
+  tokensEst = estTok total
+  measuredTok = if Number.isFinite(measured) and measured > 0 then measured else null
+  forPct = measuredTok ? tokensEst
+  {
+    events: rows.length
+    bytes: total
+    tokensEst
+    lastPromptTokens: measuredTok
+    budget
+    pct: if budget > 0 then Number((forPct / budget * 100).toFixed 1) else 0
+  }
+
+fmtWindow = (w, which) ->
+  head = if w.lastPromptTokens? and which is 'before'
+    "#{w.lastPromptTokens}tok measured (~#{w.tokensEst}tok est)"
+  else
+    "~#{w.tokensEst}tok est"
+  "#{head} / #{w.budget}tok (#{w.pct}%) — #{w.events} eligible events, #{w.bytes} bytes"
+
+sizeReport = ({ dry, droppedAny, before, after }) ->
+  lines = [
+    if dry then 'Preview only (dryRun: true) — file not written.' else 'Session file updated.'
+    "Before: #{fmtWindow before, 'before'}"
+    "After:  #{fmtWindow after, 'after'}"
+    "Eligible events: #{before.events} → #{after.events}"
+    "Est tokens: #{before.tokensEst} → #{after.tokensEst}"
+    "Budget fill: #{before.pct}% → #{after.pct}%"
+  ]
+  if dry
+    lines.push 'Set dryRun false to apply. Reloads into memory at the next turn boundary.'
+  else if droppedAny
+    lines.push 'Reloads into memory at the next turn boundary. After-tokens stay estimated (~bytes/4) until the next completion measures them.'
+  else
+    lines.push 'Nothing removed.'
+  lines.join '\n'
+
 # Targeted removal: drop exactly the named events (sha prefix, min 4 chars)
 # plus their tool_call/tool_result pair-mates so pairs never split.
 # Only the five kinds are eligible; anything else is refused per sha.
@@ -332,7 +383,6 @@ tools =
         e.count += 1
       typeLines = Object.keys(byType).map (t) -> { type: t, bytes: byType[t].bytes, count: byType[t].count }
       typeLines.sort (a, b) -> b.bytes - a.bytes
-      estTok = (b) -> Math.ceil b / 4  # bytes -> tokens; row.bytes below is always raw bytes
       for tl in typeLines
         tl.tok = estTok tl.bytes
       { budget, agl, srv, spec } = ctxBudget()
@@ -368,8 +418,9 @@ tools =
       'assistant_response are ever eligible — telemetry, system, and catalogs are immortal. ' +
       'Pass removeShas (sha prefixes from context_analysis) to delete exactly those events ' +
       'plus their tool_call/tool_result pair-mates instead of the blanket pass. ' +
-      'Ada-back notices a real run and reloads the trimmed history into memory at the next ' + +
-      'turn boundary — no restart needed. Use dryRun first to preview counts.'
+      'Ada-back notices a real run and reloads the trimmed history into memory at the next ' +
+      'turn boundary — no restart needed. Use dryRun first to preview. ' +
+      'The result reports before vs after context size (measured/est tokens, % of budget, eligible events).'
     inputSchema:
       type: 'object'
       properties:
@@ -405,7 +456,12 @@ tools =
       else
         detail = null
         { kept, removedImages, removedCalls, removedResults } = compactLines lines
+      keptRaw = if kept.length then kept.join('\n') + '\n' else ''
+      before = windowStats lines, readLastPromptTokens r.id
+      after = windowStats kept
+      droppedAny = kept.length < lines.length
       summary =
+        report: sizeReport { dry, droppedAny, before, after }
         session: r.id
         file: r.fp
         dryRun: dry
@@ -418,16 +474,15 @@ tools =
         removedToolCalls: removedCalls
         removedToolResults: removedResults
         bytesBefore: raw.length
-        bytesAfter: null
+        bytesAfter: keptRaw.length
+        windowBefore: before
+        windowAfter: after
         backupPath: null
-      droppedAny = kept.length < lines.length
       if not dry and droppedAny
         stamp = new Date().toISOString().replace(/[:.]/g, '-')
         backup = "#{r.fp}.pre-compact-#{stamp}"
         copyFileSync r.fp, backup
-        out = if kept.length then kept.join('\n') + '\n' else ''
-        writeFileSync r.fp, out
-        summary.bytesAfter = out.length
+        writeFileSync r.fp, keptRaw
         summary.backupPath = backup
         # keep the sidecar honest (informational only)
         sidecar = join SESSION_DIR, "#{r.id}.json"
