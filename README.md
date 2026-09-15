@@ -51,7 +51,7 @@ gaps instead of hallucinating or tripping over dangling references.
   floor)`, so the `% full` number matches the pie ring [Ada](https://github.com/mikesmullin/ada) shows, not a guess.
 - **Safe by construction.** `dryRun` defaults true, real runs back up the file
   (`*.pre-compact-<stamp>`), refresh the sidecar counts, keep corrupt lines
-  rather than destroy them, and refuse anything outside the five kinds.
+  rather than destroy them, and refuse anything not sent to the provider.
 - **Naive on purpose.** No summarization, no semantic merging — what survives is
   verbatim. (That's the v1 contract; summarization is the obvious next pass.)
 
@@ -86,11 +86,7 @@ context_analysis({ sort: "largest", limit: 25 })
 Context window: 2026-09-06
 Window: 183420tok / 262144tok (70.0%) in 412 events
 Budget 262144tok (gemma-4-26b: AGL 262144, server floor 262144)
-Excluded: 96 telemetry/system events (never listed or removed)
-Tokens by type (est ~bytes/4):
-  tool_response: 94000tok (~35.9%) in 120 events
-  reasoning: 41000tok (~15.6%) in 88 events
-  ...
+Excluded: 96 telemetry/system/reasoning events (never listed or removed)
 Showing top 25 of 412 largest (offset=0 limit=25)
 
 a3f9c1 tool_response 18230tok: agent_browser_snapshot => {tabs: [...], …}
@@ -98,11 +94,13 @@ a3f9c1 tool_response 18230tok: agent_browser_snapshot => {tabs: [...], …}
 ...
 ```
 
-Kinds are the stable vocabulary everywhere (report *and* removal):
-`user_prompt`, `reasoning`, `tool_call`, `tool_response`, `assistant_response`.
-Everything else — `provider_*` telemetry, `gen_info` usage, harness events,
-system prompts, tool catalogs, session bookkeeping — is excluded from the report
-and immortal to the trimmer.
+Kinds are the stable vocabulary everywhere (report *and* removal) — only what
+the provider actually sees:
+`user_prompt`, `tool_call`, `tool_response`, `assistant_response`.
+Reasoning traces are UI/jsonl only (AGL never retransmits them), same as
+`provider_*` telemetry, `gen_info`, harness events, system prompts, tool
+catalogs, and session bookkeeping: excluded from the report and immortal to
+the trimmer.
 
 **2. Preview the cut.** Everything is `dryRun: true` unless you say otherwise.
 The blanket pass reports what it *would* drop; the targeted pass reports
@@ -139,7 +137,7 @@ back is stopped still apply on next startup. No restart needed either way.
 
 | tool | what it does | writes? |
 |---|---|---|
-| `context_analysis` | Read-only report: budget line, `Tokens by type`, then one `sha6 kind NNNtok: gist` line per event (`largest` or `chrono`, `limit` ≤ 1000, `offset` pages). | never |
+| `context_analysis` | Read-only report: budget/window line, then one `sha6 kind NNNtok: gist` line per event (`largest` or `chrono`, `limit` ≤ 1000, `offset` pages). | never |
 | `compact_session_history` | Slim the session file. Blanket: drop image-payload events + `tool_call`/`tool_result` pairs. Targeted (`removeShas`): drop exactly those events + pair-mates. | only when `dryRun: false` |
 
 Resolution order for the session file: explicit `sessionId` (basename without
@@ -155,10 +153,10 @@ base64 run long enough to only be a picture (tool-result metadata like
 
 The invariants, for when you want the full contract:
 
-- **Five kinds, nothing else.** Only `user_prompt`, `reasoning`, `tool_call`,
-  `tool_response`, `assistant_response` are ever eligible. Telemetry, system,
-  catalogs, and bookkeeping are invisible to the report and immortal to the
-  trimmer.
+- **Provider-sent kinds, nothing else.** Only `user_prompt`, `tool_call`,
+  `tool_response`, `assistant_response` are ever eligible. Reasoning traces,
+  telemetry, system, catalogs, and bookkeeping are invisible to the report and
+  immortal to the trimmer.
 - **Pairs never split.** A dropped call takes its result(s); a dropped result
   takes its call — by `tool_call_id`, in both directions.
 - **Pixels, not metadata.** The image detector keys on payload shape, so small

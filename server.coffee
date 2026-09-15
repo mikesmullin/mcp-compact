@@ -27,28 +27,26 @@ resolveSessionFile = (sessionId) ->
   return { ok: false, error: "session file missing: #{fp}" } unless existsSync fp
   { ok: true, id, fp }
 
-# The five eligible kinds, and nothing else. Display names are the stable
-# vocabulary for the report and removal: user_prompt, reasoning, tool_call,
-# tool_response, assistant_response. Telemetry (provider_*, gen_info,
-# harness), system prompts, catalogs, and session bookkeeping are invisible
-# to the report and immortal to the trimmer.
+# Eligible kinds = what AGL actually sends to the provider (messagesForProvider):
+# user_prompt, tool_call, tool_response, assistant_response.
+# Reasoning traces are UI/jsonl only (never retransmitted) — same as telemetry,
+# system prompts, catalogs, and session bookkeeping: invisible to the report
+# and immortal to the trimmer.
 displayType = (o) ->
   return null unless o
   switch o.event_type
     when 'tool_call' then 'tool_call'
     when 'tool_result' then 'tool_response'
-    when 'reasoning' then 'reasoning'
     when 'context_window'
       role = o.payload?.role
       if role is 'user' then 'user_prompt'
       else if role is 'assistant' then 'assistant_response'
-      else if role is 'reasoning' then 'reasoning'
       else null
     else null
 
 # Pixel weight, not metadata: data-URLs, image_url parts, or base64 runs big
 # enough to only be a picture (tool-result metadata like {mimeType, bytes}
-# is a few dozen bytes and is kept). Only ever applied to the five kinds.
+# is a few dozen bytes and is kept). Only ever applied to provider-sent kinds.
 hasPixelBlob = (line) ->
   return true if /data:image\/[a-z0-9.+-]+;base64/i.test line
   return true if /"image_url"/.test line
@@ -203,7 +201,7 @@ readLastPromptTokens = (id) ->
   catch e then null
   null
 
-# Eligible-window size (the five kinds), same estimator as context_analysis.
+# Eligible-window size (provider-sent kinds), same estimator as context_analysis.
 # `measured` is lastPromptTokens when known (before only).
 windowStats = (lineList, measured = null) ->
   { rows, total } = analyzeLines lineList
@@ -246,7 +244,7 @@ sizeReport = ({ dry, droppedAny, before, after }) ->
 
 # Targeted removal: drop exactly the named events (sha prefix, min 4 chars)
 # plus their tool_call/tool_result pair-mates so pairs never split.
-# Only the five kinds are eligible; anything else is refused per sha.
+# Only provider-sent kinds are eligible; anything else is refused per sha.
 removeByShas = (lines, parsed, requested) ->
   full = lines.map (l) -> sha1hex l
   drop = new Set()
@@ -269,7 +267,7 @@ removeByShas = (lines, parsed, requested) ->
     eids = eligible.map (i) -> parsed[i]?.event_id or "line#{i}"
     label = if eids.length is 1 then eids[0] else eids
     if refused > 0
-      label = { removed: label, refused: "#{refused} matched but outside the five kinds" }
+      label = { removed: label, refused: "#{refused} matched but not sent to the provider (e.g. reasoning/telemetry)" }
     detail[String orig] = label
   # pair expansion: a dropped call takes its result and vice versa
   callIds = new Set()
@@ -313,7 +311,7 @@ compactLines = (lines) ->
       kept.push l # corrupt line: keep rather than destroy
       continue
     unless displayType o
-      kept.push l # immortal: outside the five kinds, never touched
+      kept.push l # immortal: not sent to the provider, never touched
       continue
     if hasPixelBlob l
       removedImages += 1
@@ -333,10 +331,10 @@ compactLines = (lines) ->
 
 tools =
   context_analysis:
-    description: 'Read-only report on what is in Ada\'s session history, scoped to five kinds: ' +
-      'user_prompt, reasoning, tool_call, tool_response, assistant_response (telemetry, system, catalogs excluded). ' +
-      'Byte subtotals by kind, then one line per event `sha6 kind NNNtok: tool name + YAML-flow params…` ' +
-      '(truncated at 100 chars). ' +
+    description: 'Read-only report on what Ada sends to the model, scoped to four kinds: ' +
+      'user_prompt, tool_call, tool_response, assistant_response ' +
+      '(reasoning traces, telemetry, system, catalogs excluded — they are not in the provider prompt). ' +
+      'One line per event `sha6 kind NNNtok: gist…` (truncated). ' +
       'Top 25 heaviest first by default; raise limit + offset to enumerate everything. ' +
       'Name sha prefixes in compact_session_history removeShas to delete exactly those events.'
     inputSchema:
@@ -376,15 +374,6 @@ tools =
       off0 = parseInt offset, 10
       off0 = 0 unless off0 >= 0
       page = rows.slice off0, off0 + lim
-      byType = {}
-      for row in rows
-        e = byType[row.type] ?= { bytes: 0, count: 0 }
-        e.bytes += row.bytes
-        e.count += 1
-      typeLines = Object.keys(byType).map (t) -> { type: t, bytes: byType[t].bytes, count: byType[t].count }
-      typeLines.sort (a, b) -> b.bytes - a.bytes
-      for tl in typeLines
-        tl.tok = estTok tl.bytes
       { budget, agl, srv, spec } = ctxBudget()
       used = null
       try
@@ -399,13 +388,9 @@ tools =
         "Context window: #{r.id}"
         "Window: #{usedLabel} / #{budget}tok (#{usedPct}%) in #{rows.length} events"
         "Budget #{budget}tok (#{spec or '?'}: AGL #{agl or 'miss'}, server floor #{srv})"
-        "Excluded: #{excluded} telemetry/system events (never listed or removed)"
-        "Tokens by type (est ~bytes/4):"
+        "Excluded: #{excluded} telemetry/system/reasoning events (never listed or removed)"
+        "Showing top #{page.length} of #{rows.length} largest (offset=#{off0} limit=#{lim})"
       ]
-      for tl in typeLines
-        tpct = if budget > 0 then (tl.tok / budget * 100).toFixed 1 else '0.0'
-        out.push "  #{tl.type}: #{tl.tok}tok (~#{tpct}%) in #{tl.count} events"
-      out.push "Showing top #{page.length} of #{rows.length} largest (offset=#{off0} limit=#{lim})"
       out.push ''
       for row in page
         out.push "#{row.sha.slice 0, 6} #{row.type} #{estTok row.bytes}tok: #{clip100 row.text}"
@@ -414,8 +399,9 @@ tools =
   compact_session_history:
     description: 'Slim Ada\'s session history file so context fits again. ' +
       'Backs up the jsonl, then drops image-payload events and tool_call/tool_result pairs ' +
-      '(naive first pass: no summarization). Only user_prompt, reasoning, tool_call, tool_response, ' +
-      'assistant_response are ever eligible — telemetry, system, and catalogs are immortal. ' +
+      '(naive first pass: no summarization). Only user_prompt, tool_call, tool_response, ' +
+      'assistant_response are ever eligible (what the provider actually sees). ' +
+      'Reasoning traces, telemetry, system, and catalogs are immortal. ' +
       'Pass removeShas (sha prefixes from context_analysis) to delete exactly those events ' +
       'plus their tool_call/tool_result pair-mates instead of the blanket pass. ' +
       'Ada-back notices a real run and reloads the trimmed history into memory at the next ' +
